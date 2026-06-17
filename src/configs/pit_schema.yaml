@@ -1,0 +1,16 @@
+pit_schema:
+  - name: year
+    type: integer
+    nullable: true
+
+  - name: spa
+    type: string
+    nullable: true
+
+  - name: population_type
+    type: string
+    nullable: true
+
+  - name: count
+    type: integer
+    nullable: true

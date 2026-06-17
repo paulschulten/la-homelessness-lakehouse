@@ -1,0 +1,7 @@
+metrics:
+  total_count:
+    group_by:
+      - year
+      - spa
+    aggregation:
+      count: sum

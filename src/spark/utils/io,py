@@ -1,0 +1,7 @@
+from pyspark.sql import DataFrame, SparkSession
+
+def read_csv(spark: SparkSession, path: str, header: bool = True) -> DataFrame:
+    return spark.read.option("header", header).csv(path)
+
+def write_delta(df: DataFrame, path: str, mode: str = "overwrite"):
+    df.write.format("delta").mode(mode).save(path)
