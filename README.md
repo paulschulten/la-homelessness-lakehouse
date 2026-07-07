@@ -14,7 +14,7 @@ The platform utilizes a medallion data architecture built on DuckDB, Parquet, Py
 - **Dagster** — pipeline orchestration
 - **Parquet** — current data file format
 
-**Architected for, not yet implemented:**
+**Architected for:**
 - **Apache Iceberg** — lakehouse table format as the platform scales across multiple domains
 - **Apache Spark** — distributed processing once the data becomes too large for DuckDB + Python to handle
 - **Tabular ML** — machine‑learned pattern discovery as the foundation for robust tract‑level analytics and predictive modeling
