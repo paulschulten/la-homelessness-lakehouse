@@ -19,3 +19,5 @@ Thumbs.db
 # VS Code
 .vscode/
 
+# Dagster
+.tmp_dagster_home*/
