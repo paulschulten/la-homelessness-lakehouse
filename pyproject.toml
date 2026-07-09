@@ -1,26 +1,18 @@
-[tool.poetry]
+[project]
 name = "la-homelessness-lakehouse"
 version = "0.1.0"
-description = "Multi-domain LA homelessness data platform."
-authors = [
-    "Paul Schulten <paul_schulten@yahoo.com>",
-]
-package-mode = false
+description = "LA Homelessness Lakehouse Dagster Orchestrator"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = ">=3.12,<3.15"
-pyspark = "^4.1.2"
-pandas = "^3.0.4"
-pyarrow = "^24.0.0"
-python-dotenv = "^1.2.2"
-jupyterlab = "^4.6.0"
-dagster = "^1.13.11"
-dagster-webserver = "^1.13.11"
+requires-python = ">=3.12"
+dependencies = [
+    "dagster",
+    "dagster-webserver",
+    "pyspark",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.dagster]
-module_name = "lh_orch"
+[tool.setuptools]
+packages = ["lh_orch"]
