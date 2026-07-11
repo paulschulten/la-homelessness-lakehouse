@@ -1,11 +1,14 @@
+
 from dagster import Definitions, ScheduleDefinition
 
+# asset imports
 from .lh_assets.bronze_expenses import bronze_expenses
 from .lh_assets.silver_expenses import silver_expenses
 from .lh_assets.gold_expenses import gold_expenses
 from .lh_assets.counts import raw_count, silver_count, gold_count
 
-
+# sensor imports
+from .lh_assets.lacity_sensor import lacity_sensor
 
 bronze_silver_daily_schedule = ScheduleDefinition(
     job_name="__ASSET_JOB",
@@ -22,5 +25,5 @@ defs = Definitions(
         gold_count,
     ],
     schedules=[bronze_silver_daily_schedule],
-    
+    sensors=[lacity_sensor],
 )
