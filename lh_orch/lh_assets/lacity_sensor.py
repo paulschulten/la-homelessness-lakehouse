@@ -40,3 +40,4 @@ def lacity_sensor(context):
 
     # No change → no run
     return None
+
