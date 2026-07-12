@@ -1,53 +1,58 @@
-import os
-import json
-import requests
-from datetime import datetime
-from pathlib import Path
-from dagster import asset
+# lh_orch/lh_assets/bronze_expenses.py
 
-DATA_URL = "https://controllerdata.lacity.org/resource/98ve-cuf5.json"
-PAGE_SIZE = 50000
+import dagster as dg
+import requests
+import json
+from pathlib import Path
+from datetime import datetime
 
 project_root = Path(__file__).resolve().parents[2]
 
-DATA_DIR = project_root / "02_data"
-BRONZE_DIR = DATA_DIR / "01_raw" / "lacity" / "01_homelessness_expenses"
+RAW_DIR = (
+    project_root
+    / "02_data"
+    / "01_raw"
+    / "lacity"
+    / "01_homelessness_expenses"
+)
 
-def fetch_all_pages():
-    all_rows = []
-    offset = 0
+DATA_URL = "https://controllerdata.lacity.org/api/v3/views/98ve-cuf5/query.json"
 
-    while True:
-        response = requests.get(
-            DATA_URL,
-            params={
-                "$limit": PAGE_SIZE,
-                "$offset": offset
-            }
-        )
-        response.raise_for_status()
 
-        page = response.json()
+@dg.asset(
+    name="bronze_expenses",
+    description="Raw homelessness expenses data pulled from LA Controller API view.",
+)
+def bronze_expenses(context: dg.AssetExecutionContext):
 
-        if not page:
-            break
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-        all_rows.extend(page)
-        offset += PAGE_SIZE
+    context.log.info(f"Downloading dataset from: {DATA_URL}")
 
-    return all_rows
+    response = requests.get(DATA_URL, timeout=30)
+    response.raise_for_status()
 
-@asset
-def bronze_expenses():
-    BRONZE_DIR.mkdir(parents=True, exist_ok=True)
+    # The payload is a LIST, not a dict
+    data = response.json()
 
-    data = fetch_all_pages()
+    if not isinstance(data, list):
+        raise ValueError("Expected list-based JSON payload but received something else.")
 
+    record_count = len(data)
+    context.log.info(f"Fetched {record_count} records from LA Controller API view")
+
+    # Write timestamped raw JSON file
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"homelessness_expenses_full_{timestamp}.json"
-    output_path = BRONZE_DIR / filename
+    output_path = RAW_DIR / f"homelessness_expenses_raw_{timestamp}.json"
 
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
 
-    return str(output_path)
+    context.log.info(f"Wrote Bronze file: {output_path}")
+
+    return dg.MaterializeResult(
+        metadata={
+            "records": dg.MetadataValue.int(record_count),
+            "output_path": dg.MetadataValue.path(str(output_path)),
+        }
+    )

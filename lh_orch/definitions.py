@@ -1,21 +1,20 @@
+# lh_orch/definitions.py
 
-from dagster import Definitions, ScheduleDefinition
+import dagster as dg
 
-# asset imports
-from .lh_assets.bronze_expenses import bronze_expenses
-from .lh_assets.silver_expenses import silver_expenses
-from .lh_assets.gold_expenses import gold_expenses
-from .lh_assets.counts import raw_count, silver_count, gold_count
+from lh_orch.lh_assets.bronze_expenses import bronze_expenses
+from lh_orch.lh_assets.silver_expenses import silver_expenses
+from lh_orch.lh_assets.gold_expenses import gold_expenses
 
-# sensor imports
-from .lh_assets.lacity_sensor import lacity_sensor
+from lh_orch.lh_assets.counts import raw_count, silver_count, gold_count
+from lh_orch.lh_assets.lacity_sensor import lacity_sensor, lacity_ingestion_job
 
-bronze_silver_daily_schedule = ScheduleDefinition(
-    job_name="__ASSET_JOB",
-    cron_schedule="0 2 * * *",   # 2:00 AM every day
+bronze_silver_daily_schedule = dg.ScheduleDefinition(
+    job=lacity_ingestion_job,
+    cron_schedule="0 2 * * *",
 )
 
-defs = Definitions(
+defs = dg.Definitions(
     assets=[
         bronze_expenses,
         silver_expenses,
@@ -24,6 +23,7 @@ defs = Definitions(
         silver_count,
         gold_count,
     ],
+    jobs=[lacity_ingestion_job],
     schedules=[bronze_silver_daily_schedule],
     sensors=[lacity_sensor],
 )

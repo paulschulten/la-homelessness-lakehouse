@@ -1,34 +1,50 @@
 # lh_orch/lh_assets/lacity_sensor.py
 
 import requests
-from dagster import sensor, RunRequest
+import dagster as dg
+
+from lh_orch.lh_assets.bronze_expenses import bronze_expenses
 from lh_orch.lh_assets.counts import raw_count
 
-SOCRATA_URL = "https://controllerdata.lacity.org/resource/2nrs-mtv8.json?$select=count(*)"
+# Correct endpoint based on your curl output
+SOCRATA_URL = "https://controllerdata.lacity.org/resource/98ve-cuf5.json?$select=count(*)"
 
-@sensor
-def lacity_sensor(context):
+# --- Define the job this sensor will trigger ---
+lacity_ingestion_job = dg.define_asset_job(
+    name="lacity_ingestion_job",
+    selection=[
+        bronze_expenses,
+        raw_count,
+    ],
+)
+
+@dg.sensor(job=lacity_ingestion_job)
+def lacity_sensor(context: dg.SensorEvaluationContext):
     """
-    Triggers a pipeline run when the LA Controller site record count changes.
-    Compares the Socrata count to the raw_count asset stored in Dagster.
+    Triggers ingestion when the LA Controller site record count changes.
     """
 
-    # 1. Fetch record count from LA Controller site
+    # 1. Fetch record count from LA Controller API
     try:
         response = requests.get(SOCRATA_URL, timeout=10)
         response.raise_for_status()
-        controller_count = int(response.json()[0]["count"])
+
+        data = response.json()
+        context.log.info(f"Raw API response: {data}")
+
+        # Your curl output proves the correct key is "count"
+        controller_count = int(data[0]["count"])
+
     except Exception as e:
         context.log.error(f"Failed to fetch LA site count: {e}")
-        return None
+        return dg.SkipReason(f"Failed to fetch LA site count: {e}")
 
     # 2. Fetch Dagster's last materialized raw_count
     try:
         raw_event = context.instance.get_latest_materialization_event(raw_count.key)
         raw_count_value = raw_event.materialization.metadata["records"].value
     except Exception:
-        # If raw_count has never been materialized, force a run
-        raw_count_value = -1
+        raw_count_value = -1  # force run if never materialized
 
     context.log.info(f"Controller site count: {controller_count}")
     context.log.info(f"Dagster raw_count: {raw_count_value}")
@@ -36,8 +52,6 @@ def lacity_sensor(context):
     # 3. Compare counts — trigger ingestion only when they differ
     if controller_count != raw_count_value:
         context.log.info("Change detected — triggering ingestion pipeline.")
-        return RunRequest(run_key=str(controller_count))
+        return dg.RunRequest(run_key=str(controller_count))
 
-    # No change → no run
-    return None
-
+    return dg.SkipReason("No change detected — skipping run.")

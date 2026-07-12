@@ -1,45 +1,69 @@
 # lh_orch/lh_assets/counts.py
 
+import dagster as dg
 import json
-import glob
 import pandas as pd
-from dagster import asset, Output, MetadataValue
+from pathlib import Path
 
-RAW_PATH = "02_data/01_raw/lacity/01_homelessness_expenses"
-SILVER_PATH = "02_data/02_silver/lacity/01_homelessness_expenses"
-GOLD_PATH = "02_data/03_gold/lacity/01_homelessness_expenses"
+# Resolve project root
+project_root = Path(__file__).resolve().parents[2]
+
+RAW_PATH = project_root / "02_data/01_raw/lacity/01_homelessness_expenses"
+SILVER_PATH = project_root / "02_data/02_silver/lacity/01_homelessness_expenses"
+GOLD_PATH = project_root / "02_data/03_gold/lacity/01_homelessness_expenses"
 
 
-@asset
-def raw_count():
-    files = sorted(glob.glob(f"{RAW_PATH}/*.json"))
+@dg.asset
+def raw_count(context: dg.AssetExecutionContext):
+    files = sorted(RAW_PATH.glob("*.json"))
     if not files:
-        return Output(0, metadata={"records": MetadataValue.int(0)})
+        context.log.warning("No raw JSON files found.")
+        return dg.MaterializeResult(
+            metadata={"records": dg.MetadataValue.int(0)}
+        )
 
     with open(files[-1], "r") as f:
         data = json.load(f)
 
     count = len(data)
-    return Output(count, metadata={"records": MetadataValue.int(count)})
+    context.log.info(f"Raw record count: {count}")
+
+    return dg.MaterializeResult(
+        metadata={"records": dg.MetadataValue.int(count)}
+    )
 
 
-@asset
-def silver_count():
-    files = sorted(glob.glob(f"{SILVER_PATH}/*.parquet"))
+@dg.asset
+def silver_count(context: dg.AssetExecutionContext):
+    files = sorted(SILVER_PATH.glob("*.parquet"))
     if not files:
-        return Output(0, metadata={"records": MetadataValue.int(0)})
+        context.log.warning("No silver parquet files found.")
+        return dg.MaterializeResult(
+            metadata={"records": dg.MetadataValue.int(0)}
+        )
 
     df = pd.read_parquet(files[-1])
     count = len(df)
-    return Output(count, metadata={"records": MetadataValue.int(count)})
+    context.log.info(f"Silver record count: {count}")
+
+    return dg.MaterializeResult(
+        metadata={"records": dg.MetadataValue.int(count)}
+    )
 
 
-@asset
-def gold_count():
-    files = sorted(glob.glob(f"{GOLD_PATH}/*.parquet"))
+@dg.asset
+def gold_count(context: dg.AssetExecutionContext):
+    files = sorted(GOLD_PATH.glob("*.parquet"))
     if not files:
-        return Output(0, metadata={"records": MetadataValue.int(0)})
+        context.log.warning("No gold parquet files found.")
+        return dg.MaterializeResult(
+            metadata={"records": dg.MetadataValue.int(0)}
+        )
 
     df = pd.read_parquet(files[-1])
     count = len(df)
-    return Output(count, metadata={"records": MetadataValue.int(count)})
+    context.log.info(f"Gold record count: {count}")
+
+    return dg.MaterializeResult(
+        metadata={"records": dg.MetadataValue.int(count)}
+    )
