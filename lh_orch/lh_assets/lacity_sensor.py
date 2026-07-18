@@ -4,7 +4,7 @@ import requests
 import dagster as dg
 
 from lh_orch.lh_assets.bronze_expenses import bronze_expenses
-from lh_orch.lh_assets.counts import raw_count
+from lh_orch.lh_assets.counts import bronze_count
 
 # Correct endpoint based on your curl output
 SOCRATA_URL = "https://controllerdata.lacity.org/resource/98ve-cuf5.json?$select=count(*)"
@@ -14,7 +14,7 @@ lacity_ingestion_job = dg.define_asset_job(
     name="lacity_ingestion_job",
     selection=[
         bronze_expenses,
-        raw_count,
+        bronze_count,
     ],
 )
 
@@ -32,25 +32,24 @@ def lacity_sensor(context: dg.SensorEvaluationContext):
         data = response.json()
         context.log.info(f"Raw API response: {data}")
 
-        # Your curl output proves the correct key is "count"
         controller_count = int(data[0]["count"])
 
     except Exception as e:
         context.log.error(f"Failed to fetch LA site count: {e}")
         return dg.SkipReason(f"Failed to fetch LA site count: {e}")
 
-    # 2. Fetch Dagster's last materialized raw_count
+    # 2. Fetch Dagster's last materialized bronze_count
     try:
-        raw_event = context.instance.get_latest_materialization_event(raw_count.key)
-        raw_count_value = raw_event.materialization.metadata["records"].value
+        raw_event = context.instance.get_latest_materialization_event(bronze_count.key)
+        bronze_count_value = raw_event.materialization.metadata["records"].value
     except Exception:
-        raw_count_value = -1  # force run if never materialized
+        bronze_count_value = -1  # force run if never materialized
 
     context.log.info(f"Controller site count: {controller_count}")
-    context.log.info(f"Dagster raw_count: {raw_count_value}")
+    context.log.info(f"Dagster bronze_count: {bronze_count_value}")
 
     # 3. Compare counts — trigger ingestion only when they differ
-    if controller_count != raw_count_value:
+    if controller_count != bronze_count_value:
         context.log.info("Change detected — triggering ingestion pipeline.")
         return dg.RunRequest(run_key=str(controller_count))
 
