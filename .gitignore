@@ -3,11 +3,12 @@ __pycache__/
 *.pyc
 .venv/
 env/
+*.egg-info/
 
 # Data
-data/raw/
-data/processed/
-data/tmp/
+02_data/01_raw/
+02_data/02_silver/
+02_data/03_gold/
 
 # Environment
 .env

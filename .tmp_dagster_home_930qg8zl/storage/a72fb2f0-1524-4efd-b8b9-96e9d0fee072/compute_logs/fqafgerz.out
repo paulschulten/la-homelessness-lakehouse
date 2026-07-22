@@ -1,2 +1,0 @@
-DEBUG: BRONZE_DIR resolves to: /home/paul/la-homelessness-lakehouse/02_data/01_raw/lacity/01_homelessness_expenses
-DEBUG: SILVER_DIR resolves to: /home/paul/la-homelessness-lakehouse/02_data/02_silver/lacity/01_homelessness_expenses
