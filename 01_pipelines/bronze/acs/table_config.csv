@@ -1,0 +1,86 @@
+table_id	series
+B01001	Population Base
+B01003	Population Base
+B02001	Race/Ethnicity
+B03002	Race/Ethnicity
+B05002	Nativity
+B07001	Residential Mobility
+B07012	Residential Mobility
+B08301	Transportation
+B10050	Grandparent Caregivers
+B11001	Household Type
+B11005	Household Type
+B11007	Household Type
+B11009	Household Type
+B11012	Household Type
+B11016	Household Type
+B12001	Marital Status
+B14001	Education
+B14006	Education
+B15003	Education
+B16002	Language
+B17001	Poverty
+B17002	Poverty
+B17010	Poverty
+B17012	Poverty
+B17020	Poverty
+B17021	Poverty
+B17024	Poverty
+B18101	Disability
+B18102	Disability
+B18103	Disability
+B18104	Disability
+B18105	Disability
+B18106	Disability
+B18107	Disability
+B18135	Disability
+B19001	Income
+B19013	Income
+B19025	Income
+B19055	Income
+B19056	Income
+B19057	Income
+B19058	Income
+B19059	Income
+B19083	Income
+B19113	Income
+B19301	Income
+B21001	Veteran Status
+B21005	Veteran Status
+B22001	Food Assistance
+B23001	Employment
+B23020	Employment
+B23022	Employment
+B23025	Employment
+B25001	Housing
+B25002	Housing
+B25003	Housing
+B25004	Housing
+B25008	Housing
+B25009	Housing
+B25014	Housing
+B25018	Housing
+B25024	Housing
+B25034	Housing
+B25035	Housing
+B25040	Housing
+B25041	Housing
+B25044	Vehicle Availability
+B25058	Housing
+B25063	Housing
+B25064	Housing
+B25070	Housing
+B25074	Housing
+B25075	Housing
+B25077	Housing
+B25091	Housing
+B25106	Housing
+B25119	Income
+B26001	Group Quarters Detail
+B26004	Group Quarters Detail
+B27001	Health Insurance
+B27010	Health Insurance
+B27011	Health Insurance
+B27019	Health Insurance
+B27020	Health Insurance
+B28002	Internet Access
