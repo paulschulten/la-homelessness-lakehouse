@@ -1,6 +1,6 @@
 [project]
 name = "la-homelessness-lakehouse"
-version = "0.2.0"
+version = "0.3.0"
 description = "LA Homelessness Lakehouse Dagster Orchestrator"
 readme = "README.md"
 requires-python = ">=3.12"
