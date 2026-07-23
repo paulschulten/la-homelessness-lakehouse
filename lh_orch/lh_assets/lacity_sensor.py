@@ -4,7 +4,9 @@ import requests
 import dagster as dg
 
 from lh_orch.lh_assets.bronze_expenses import bronze_expenses
-from lh_orch.lh_assets.counts import bronze_count
+from lh_orch.lh_assets.silver_expenses import silver_expenses
+from lh_orch.lh_assets.gold_expenses import gold_expenses
+from lh_orch.lh_assets.counts import bronze_count, silver_count, gold_count
 
 # Correct endpoint based on your curl output
 SOCRATA_URL = "https://controllerdata.lacity.org/resource/98ve-cuf5.json?$select=count(*)"
@@ -14,7 +16,11 @@ lacity_ingestion_job = dg.define_asset_job(
     name="lacity_ingestion_job",
     selection=[
         bronze_expenses,
+        silver_expenses,
+        gold_expenses,
         bronze_count,
+        silver_count,
+        gold_count,
     ],
 )
 
