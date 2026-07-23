@@ -16,7 +16,7 @@ SILVER_DIR = DATA_DIR / "02_silver" / "lacity" / "01_homelessness_expenses"
 
 @dg.asset(
     name="silver_expenses",
-    description="Cleaned and normalized homelessness expenses dataset written to Silver layer.",
+    description="Cleaned up and internally reconciled homelessness expenses data.",
     deps=["bronze_expenses"],   # ensures correct dependency ordering
 )
 def silver_expenses(context: dg.AssetExecutionContext):

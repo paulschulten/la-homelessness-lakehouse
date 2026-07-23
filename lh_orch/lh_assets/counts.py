@@ -9,7 +9,9 @@ RAW_PATH = project_root / "02_data/01_raw/lacity/01_homelessness_expenses"
 SILVER_PATH = project_root / "02_data/02_silver/lacity/01_homelessness_expenses"
 GOLD_PATH = project_root / "02_data/03_gold/lacity/01_homelessness_expenses"
 
-@dg.asset
+@dg.asset(
+    description="Row count of Bronze dataset.",
+)
 def bronze_count(context: dg.AssetExecutionContext):
     files = sorted(RAW_PATH.glob("*.json"))
     if not files:
@@ -25,7 +27,10 @@ def bronze_count(context: dg.AssetExecutionContext):
         metadata={"records": dg.MetadataValue.int(count)}
     )
 
-@dg.asset(deps=[bronze_count])  # ← use deps instead of input parameter
+@dg.asset(
+    deps=[bronze_count],
+    description="Row count of Silver dataset.",
+)
 def silver_count(context: dg.AssetExecutionContext):
     files = sorted(SILVER_PATH.glob("*.parquet"))
     if not files:
@@ -40,7 +45,10 @@ def silver_count(context: dg.AssetExecutionContext):
         metadata={"records": dg.MetadataValue.int(count)}
     )
 
-@dg.asset(deps=[silver_count])  # ← use deps instead of input parameter
+@dg.asset(
+    deps=[silver_count],
+    description="Row count of Gold dataset.",
+)
 def gold_count(context: dg.AssetExecutionContext):
     files = sorted(GOLD_PATH.glob("*.parquet"))
     if not files:

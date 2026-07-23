@@ -27,7 +27,7 @@ GOLD_PATH = (
 
 @dg.asset(
     deps=["silver_expenses"],
-    description="Gold fact table for homelessness expenses, analytics-ready."
+    description="Fact table and dimension tables for homelessness expenses."
 )
 def gold_expenses(context: dg.AssetExecutionContext):
     context.log.info(f"Reading silver parquet from: {SILVER_PATH}")
