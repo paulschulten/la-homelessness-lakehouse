@@ -239,6 +239,13 @@ def run_acs_bronze_ingestion(api_key: str, year: int, config_path: str) -> dict:
     catalog = get_catalog()
     iceberg_table = get_or_create_bronze_table(catalog)
 
+    # Bronze is a faithful mirror of the current API state, not an
+    # accumulating log - clear prior data before reingesting so re-running
+    # this (e.g. via Dagster) is idempotent instead of appending duplicate
+    # copies on top of old runs.
+    iceberg_table.delete()
+    log.info("Cleared existing bronze.acs_estimates data before reingesting.")
+
     tables_processed = 0
     failed_table_ids = []
 
