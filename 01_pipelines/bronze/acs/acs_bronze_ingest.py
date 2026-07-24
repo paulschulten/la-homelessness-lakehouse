@@ -231,6 +231,34 @@ def ingest_table(table_id: str, year: int, api_key: str, iceberg_table,
         else:
             log.info(f"{table_id}: no collapsed version ({c_table_id} not found).")
 
+def run_acs_bronze_ingestion(api_key: str, year: int, config_path: str) -> dict:
+    """Run bronze ingestion for every table in config_path. Returns a summary dict."""
+    tables = load_table_config(config_path)
+    log.info(f"Loaded {len(tables)} tables from {config_path}")
+
+    catalog = get_catalog()
+    iceberg_table = get_or_create_bronze_table(catalog)
+
+    tables_processed = 0
+    failed_table_ids = []
+
+    for row in tables:
+        table_id = row["table_id"].strip()
+        try:
+            ingest_table(table_id, year, api_key, iceberg_table)
+            tables_processed += 1
+        except Exception as e:
+            log.error(f"Failed to ingest {table_id}: {e}")
+            failed_table_ids.append(table_id)
+            continue
+
+    return {
+        "tables_configured": len(tables),
+        "tables_processed": tables_processed,
+        "tables_failed": len(failed_table_ids),
+        "failed_table_ids": failed_table_ids,
+    }
+
 
 def main():
     api_key = os.environ.get("CENSUS_API_KEY")
@@ -240,20 +268,12 @@ def main():
     year = int(os.environ.get("ACS_YEAR", "2023"))  # latest 5-year vintage at write time
     config_path = os.environ.get("TABLE_CONFIG_PATH", "table_config.csv")
 
-    tables = load_table_config(config_path)
-    log.info(f"Loaded {len(tables)} tables from {config_path}")
-
-    catalog = get_catalog()
-    iceberg_table = get_or_create_bronze_table(catalog)
-
-    for row in tables:
-        table_id = row["table_id"].strip()
-        try:
-            ingest_table(table_id, year, api_key, iceberg_table)
-        except Exception as e:
-            log.error(f"Failed to ingest {table_id}: {e}")
-            continue
-
+    summary = run_acs_bronze_ingestion(api_key=api_key, year=year, config_path=config_path)
+    log.info(
+        f"Done. Processed {summary['tables_processed']}/{summary['tables_configured']} "
+        f"tables ({summary['tables_failed']} failed)."
+    )
 
 if __name__ == "__main__":
     main()
+
