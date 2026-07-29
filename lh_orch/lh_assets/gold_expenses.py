@@ -1,14 +1,22 @@
 # lh_orch/lh_assets/gold_expenses.py
 
-import dagster as dg
-import pandas as pd
+import sys
 from pathlib import Path
 
-# Resolve project root
-project_root = Path(__file__).resolve().parents[2]
+import dagster as dg
+import pandas as pd
+import pyarrow as pa
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PIPELINES_DIR = PROJECT_ROOT / "01_pipelines"
+
+if str(PIPELINES_DIR) not in sys.path:
+    sys.path.insert(0, str(PIPELINES_DIR))
+
+from iceberg_catalog import get_catalog  # noqa: E402
 
 SILVER_PATH = (
-    project_root
+    PROJECT_ROOT
     / "02_data"
     / "02_silver"
     / "lacity"
@@ -16,46 +24,113 @@ SILVER_PATH = (
     / "homelessness_expenses_silver.parquet"
 )
 
-GOLD_PATH = (
-    project_root
-    / "02_data"
-    / "03_gold"
-    / "lacity"
-    / "01_homelessness_expenses"
-    / "fact_homelessness_expenses.parquet"
-)
+ICEBERG_NAMESPACE = "gold"
+
+
+def _ensure_namespace(catalog):
+    if (ICEBERG_NAMESPACE,) not in [ns for ns in catalog.list_namespaces()]:
+        catalog.create_namespace(ICEBERG_NAMESPACE)
+
+
+def _get_or_create_table(catalog, table_name, schema):
+    identifier = f"{ICEBERG_NAMESPACE}.{table_name}"
+    if not catalog.table_exists(identifier):
+        return catalog.create_table(identifier, schema=schema)
+    return catalog.load_table(identifier)
+
+
+FACT_SCHEMA = pa.schema([
+    (":id", pa.string()),
+    (":version", pa.string()),
+    (":created_at", pa.string()),
+    (":updated_at", pa.string()),
+    ("fiscal_year", pa.string()),
+    ("dept_nm", pa.string()),
+    ("transaction_date", pa.string()),
+    ("pstng_am", pa.float64()),
+    ("vendor", pa.string()),
+    ("work_order_nm", pa.string()),
+    ("payment_description", pa.string()),
+    ("appr_nm", pa.string()),
+    ("fund", pa.string()),
+    ("project_code", pa.string()),
+    ("project_name", pa.string()),
+    ("business_type", pa.string()),
+    ("payment_type", pa.string()),
+    ("work_order", pa.string()),
+    ("doc_id", pa.string()),
+    ("doc_cd", pa.string()),
+    ("dept_cd", pa.string()),
+    ("appr_cd", pa.string()),
+    ("doc_actg_ln_no", pa.string()),
+    ("fund_cd", pa.string()),
+    ("transaction_closed", pa.string()),
+    ("vend_cust_cd", pa.string()),
+])
+
+DIM_DEPARTMENT_SCHEMA = pa.schema([
+    ("dept_cd", pa.string()),
+    ("dept_nm", pa.string()),
+])
+
 
 @dg.asset(
     deps=["silver_expenses"],
-    description="Fact table and dimension tables for homelessness expenses."
+    description="Fact table for homelessness expenses. Landed in gold.fact_homelessness_expenses.",
 )
-def gold_expenses(context: dg.AssetExecutionContext):
+def gold_fact_expenses(context: dg.AssetExecutionContext):
     context.log.info(f"Reading silver parquet from: {SILVER_PATH}")
-
     df = pd.read_parquet(SILVER_PATH)
 
-    # Semantic renames for Gold layer
     df = df.rename(columns={
-        "dept_name": "department",
         "vendor_name": "vendor",
         "fund_nm": "fund",
         "mjr_project_code": "project_code",
         "mjr_project_name": "project_name",
-        "amount": "expense_amount",
-        "trans_date": "transaction_date",
     })
 
-    GOLD_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(GOLD_PATH, index=False)
+    for col in df.columns:
+        if col != "pstng_am":
+            df[col] = df[col].astype(str)
 
-    context.log.info(f"Gold file written to: {GOLD_PATH}")
-    context.log.info(f"Row count: {len(df)}")
+    catalog = get_catalog()
+    _ensure_namespace(catalog)
+    table = _get_or_create_table(catalog, "fact_homelessness_expenses", FACT_SCHEMA)
+
+    arrow_table = pa.Table.from_pandas(df, schema=FACT_SCHEMA, preserve_index=False)
+    table.overwrite(arrow_table)
+
+    context.log.info(f"Wrote {len(df)} rows to gold.fact_homelessness_expenses")
 
     return dg.MaterializeResult(
         metadata={
             "row_count": dg.MetadataValue.int(len(df)),
             "silver_path": dg.MetadataValue.path(str(SILVER_PATH)),
-            "gold_path": dg.MetadataValue.path(str(GOLD_PATH)),
-            "columns": dg.MetadataValue.text(str(list(df.columns))),
         }
     )
+
+
+@dg.asset(
+    deps=["silver_expenses"],
+    description="Dimension table of distinct LA City departments: code and name. Landed in gold.dim_department.",
+)
+def gold_dim_department(context: dg.AssetExecutionContext):
+    df = pd.read_parquet(SILVER_PATH)
+
+    dim_df = (
+        df[["dept_cd", "dept_nm"]]
+        .astype(str)
+        .drop_duplicates(subset=["dept_cd"])
+        .reset_index(drop=True)
+    )
+
+    catalog = get_catalog()
+    _ensure_namespace(catalog)
+    table = _get_or_create_table(catalog, "dim_department", DIM_DEPARTMENT_SCHEMA)
+
+    arrow_table = pa.Table.from_pandas(dim_df, schema=DIM_DEPARTMENT_SCHEMA, preserve_index=False)
+    table.overwrite(arrow_table)
+
+    context.log.info(f"Wrote {len(dim_df)} rows to gold.dim_department")
+
+    return dg.MaterializeResult(metadata={"row_count": dg.MetadataValue.int(len(dim_df))})

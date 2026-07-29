@@ -7,7 +7,7 @@ import dagster as dg
 
 from lh_orch.lh_assets.bronze_expenses import bronze_expenses
 from lh_orch.lh_assets.silver_expenses import silver_expenses
-from lh_orch.lh_assets.gold_expenses import gold_expenses
+from lh_orch.lh_assets.gold_expenses import gold_fact_expenses, gold_dim_department
 from lh_orch.lh_assets.counts import bronze_count, silver_count, gold_count
 from lh_orch.lh_assets.lacity_jobs import lacity_ingestion_job
 from lh_orch.lh_assets.lacity_sensor import lacity_sensor
@@ -25,7 +25,8 @@ defs = dg.Definitions(
     assets=[
         bronze_expenses,
         silver_expenses,
-        gold_expenses,
+        gold_fact_expenses,
+        gold_dim_department,
         bronze_count,
         silver_count,
         gold_count,

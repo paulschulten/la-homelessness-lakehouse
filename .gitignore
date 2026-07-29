@@ -23,3 +23,5 @@ Thumbs.db
 # Dagster
 .tmp_dagster_home*/
 02_data/01_iceberg/
+client.duckdb
+client.duckdb.wal
