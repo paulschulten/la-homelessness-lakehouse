@@ -21,6 +21,7 @@ DATA_URL = "https://controllerdata.lacity.org/api/v3/views/98ve-cuf5/query.json"
 
 @dg.asset(
     name="bronze_expenses",
+    group_name="expenses",
     description="Bronze homelessness expenses data.",
 )
 def bronze_expenses(context: dg.AssetExecutionContext):

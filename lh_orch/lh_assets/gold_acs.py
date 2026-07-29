@@ -62,6 +62,7 @@ def _load_silver_df():
 @dg.asset(
     name="gold_dim_variable",
     deps=[silver_acs_estimates],
+    group_name="acs",
     description=(
         "Dimension table of distinct ACS variables: variable code, human-readable "
         "label, and the B-table it belongs to. Landed in gold.dim_variable."
@@ -88,6 +89,7 @@ def gold_dim_variable(context: dg.AssetExecutionContext):
 @dg.asset(
     name="gold_dim_tract",
     deps=[silver_acs_estimates],
+    group_name="acs",
     description=(
         "Dimension table of distinct LA County census tracts: FIPS code and "
         "human-readable name. Landed in gold.dim_tract."
@@ -114,6 +116,7 @@ def gold_dim_tract(context: dg.AssetExecutionContext):
 @dg.asset(
     name="gold_fact_acs_estimates",
     deps=[silver_acs_estimates],
+    group_name="acs",
     description=(
         "Fact table of ACS estimates at the tract/variable/year grain: estimate, "
         "MOE, standard error, coefficient of variation, and reliability flag. "

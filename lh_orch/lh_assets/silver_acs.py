@@ -52,6 +52,7 @@ SILVER_SCHEMA = pa.schema([
 @dg.asset(
     name="silver_acs_estimates",
     deps=[bronze_acs_estimates],
+    group_name="acs",
     description=(
         "ACS estimates with margin of error converted to standard error and "
         "coefficient of variation (CV), plus a reliability flag (reliable / "

@@ -16,6 +16,7 @@ SILVER_DIR = DATA_DIR / "02_silver" / "lacity" / "01_homelessness_expenses"
 
 @dg.asset(
     name="silver_expenses",
+    group_name="expenses",
     description="Cleaned up and internally reconciled homelessness expenses data.",
     deps=["bronze_expenses"],   # ensures correct dependency ordering
 )

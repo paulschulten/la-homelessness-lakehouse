@@ -90,6 +90,7 @@ DIM_PROJECT_SCHEMA = pa.schema([
 
 @dg.asset(
     deps=["silver_expenses"],
+    group_name="expenses",
     description="Fact table for homelessness expenses. Landed in gold.fact_homelessness_expenses.",
 )
 def gold_fact_expenses(context: dg.AssetExecutionContext):
@@ -125,6 +126,7 @@ def gold_fact_expenses(context: dg.AssetExecutionContext):
 
 @dg.asset(
     deps=["silver_expenses"],
+    group_name="expenses",
     description="Dimension table of distinct LA City departments: code and name. Landed in gold.dim_department.",
 )
 def gold_dim_department(context: dg.AssetExecutionContext):
@@ -151,6 +153,7 @@ def gold_dim_department(context: dg.AssetExecutionContext):
     
 @dg.asset(
     deps=["silver_expenses"],
+    group_name="expenses",
     description="Dimension table of distinct LA City funds: code and name. Landed in gold.dim_fund.",
 )
 def gold_dim_fund(context: dg.AssetExecutionContext):
@@ -177,6 +180,7 @@ def gold_dim_fund(context: dg.AssetExecutionContext):
 
 @dg.asset(
     deps=["silver_expenses"],
+    group_name="expenses",
     description="Dimension table of distinct LA City vendors: customer code and name. Landed in gold.dim_vendor.",
 )
 def gold_dim_vendor(context: dg.AssetExecutionContext):
@@ -203,6 +207,7 @@ def gold_dim_vendor(context: dg.AssetExecutionContext):
 
 @dg.asset(
     deps=["silver_expenses"],
+    group_name="expenses",
     description="Dimension table of distinct LA City major projects: code and name. Landed in gold.dim_project.",
 )
 def gold_dim_project(context: dg.AssetExecutionContext):

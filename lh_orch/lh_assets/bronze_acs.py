@@ -20,6 +20,7 @@ TABLE_CONFIG_PATH = str(ACS_DIR / "table_config.csv")
 
 @dg.asset(
     name="bronze_acs_estimates",
+    group_name="acs",
     description=(
         "ACS 5-year tables with margins of error."
     ),
