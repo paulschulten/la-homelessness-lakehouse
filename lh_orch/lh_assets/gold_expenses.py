@@ -73,6 +73,20 @@ DIM_DEPARTMENT_SCHEMA = pa.schema([
     ("dept_nm", pa.string()),
 ])
 
+DIM_FUND_SCHEMA = pa.schema([
+    ("fund_cd", pa.string()),
+    ("fund", pa.string()),
+])
+
+DIM_VENDOR_SCHEMA = pa.schema([
+    ("vend_cust_cd", pa.string()),
+    ("vendor", pa.string()),
+])
+
+DIM_PROJECT_SCHEMA = pa.schema([
+    ("project_code", pa.string()),
+    ("project_name", pa.string()),
+])
 
 @dg.asset(
     deps=["silver_expenses"],
@@ -109,7 +123,6 @@ def gold_fact_expenses(context: dg.AssetExecutionContext):
         }
     )
 
-
 @dg.asset(
     deps=["silver_expenses"],
     description="Dimension table of distinct LA City departments: code and name. Landed in gold.dim_department.",
@@ -132,5 +145,87 @@ def gold_dim_department(context: dg.AssetExecutionContext):
     table.overwrite(arrow_table)
 
     context.log.info(f"Wrote {len(dim_df)} rows to gold.dim_department")
+
+    return dg.MaterializeResult(metadata={"row_count": dg.MetadataValue.int(len(dim_df))})
+
+    
+@dg.asset(
+    deps=["silver_expenses"],
+    description="Dimension table of distinct LA City funds: code and name. Landed in gold.dim_fund.",
+)
+def gold_dim_fund(context: dg.AssetExecutionContext):
+    df = pd.read_parquet(SILVER_PATH)
+    df = df.rename(columns={"fund_nm": "fund"})
+
+    dim_df = (
+        df[["fund_cd", "fund"]]
+        .astype(str)
+        .drop_duplicates(subset=["fund_cd"])
+        .reset_index(drop=True)
+    )
+
+    catalog = get_catalog()
+    _ensure_namespace(catalog)
+    table = _get_or_create_table(catalog, "dim_fund", DIM_FUND_SCHEMA)
+
+    arrow_table = pa.Table.from_pandas(dim_df, schema=DIM_FUND_SCHEMA, preserve_index=False)
+    table.overwrite(arrow_table)
+
+    context.log.info(f"Wrote {len(dim_df)} rows to gold.dim_fund")
+
+    return dg.MaterializeResult(metadata={"row_count": dg.MetadataValue.int(len(dim_df))})
+
+@dg.asset(
+    deps=["silver_expenses"],
+    description="Dimension table of distinct LA City vendors: customer code and name. Landed in gold.dim_vendor.",
+)
+def gold_dim_vendor(context: dg.AssetExecutionContext):
+    df = pd.read_parquet(SILVER_PATH)
+    df = df.rename(columns={"vendor_name": "vendor"})
+
+    dim_df = (
+        df[["vend_cust_cd", "vendor"]]
+        .astype(str)
+        .drop_duplicates(subset=["vend_cust_cd"])
+        .reset_index(drop=True)
+    )
+
+    catalog = get_catalog()
+    _ensure_namespace(catalog)
+    table = _get_or_create_table(catalog, "dim_vendor", DIM_VENDOR_SCHEMA)
+
+    arrow_table = pa.Table.from_pandas(dim_df, schema=DIM_VENDOR_SCHEMA, preserve_index=False)
+    table.overwrite(arrow_table)
+
+    context.log.info(f"Wrote {len(dim_df)} rows to gold.dim_vendor")
+
+    return dg.MaterializeResult(metadata={"row_count": dg.MetadataValue.int(len(dim_df))})
+
+@dg.asset(
+    deps=["silver_expenses"],
+    description="Dimension table of distinct LA City major projects: code and name. Landed in gold.dim_project.",
+)
+def gold_dim_project(context: dg.AssetExecutionContext):
+    df = pd.read_parquet(SILVER_PATH)
+    df = df.rename(columns={
+        "mjr_project_code": "project_code",
+        "mjr_project_name": "project_name",
+    })
+
+    dim_df = (
+        df[["project_code", "project_name"]]
+        .astype(str)
+        .drop_duplicates(subset=["project_code"])
+        .reset_index(drop=True)
+    )
+
+    catalog = get_catalog()
+    _ensure_namespace(catalog)
+    table = _get_or_create_table(catalog, "dim_project", DIM_PROJECT_SCHEMA)
+
+    arrow_table = pa.Table.from_pandas(dim_df, schema=DIM_PROJECT_SCHEMA, preserve_index=False)
+    table.overwrite(arrow_table)
+
+    context.log.info(f"Wrote {len(dim_df)} rows to gold.dim_project")
 
     return dg.MaterializeResult(metadata={"row_count": dg.MetadataValue.int(len(dim_df))})
