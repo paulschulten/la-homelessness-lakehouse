@@ -48,7 +48,6 @@ SILVER_SCHEMA = pa.schema([
     ("processed_at", pa.string()),
 ])
 
-
 @dg.asset(
     name="silver_acs_estimates",
     deps=[bronze_acs_estimates],

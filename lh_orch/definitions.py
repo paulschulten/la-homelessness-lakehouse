@@ -14,6 +14,9 @@ from lh_orch.lh_assets.lacity_sensor import lacity_sensor
 from lh_orch.lh_assets.bronze_acs import bronze_acs_estimates
 from lh_orch.lh_assets.silver_acs import silver_acs_estimates
 from lh_orch.lh_assets.gold_acs import gold_dim_variable, gold_dim_tract, gold_fact_acs_estimates
+from lh_orch.lh_assets.bronze_pit import bronze_pit_count
+from lh_orch.lh_assets.silver_pit import silver_pit_count
+from lh_orch.lh_assets.gold_pit import gold_fact_pit_count, gold_dim_geography
 
 bronze_silver_daily_schedule = dg.ScheduleDefinition(
     job=lacity_ingestion_job,
@@ -24,20 +27,24 @@ bronze_silver_daily_schedule = dg.ScheduleDefinition(
 defs = dg.Definitions(
     assets=[
         bronze_expenses,
-        silver_expenses,
+        bronze_count,
+        bronze_acs_estimates,
+        bronze_pit_count,
         gold_fact_expenses,
         gold_dim_department,
         gold_dim_fund,
         gold_dim_vendor,
         gold_dim_project,
-        bronze_count,
-        silver_count,
         gold_count,
-        bronze_acs_estimates,
-        silver_acs_estimates,
         gold_dim_variable,
         gold_dim_tract,
         gold_fact_acs_estimates,
+        gold_fact_pit_count,
+        gold_dim_geography,
+        silver_count,
+        silver_expenses,
+        silver_acs_estimates,
+        silver_pit_count,
     ],
     jobs=[lacity_ingestion_job],
     schedules=[bronze_silver_daily_schedule],

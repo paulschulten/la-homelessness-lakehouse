@@ -231,20 +231,23 @@ def ingest_table(table_id: str, year: int, api_key: str, iceberg_table,
         else:
             log.info(f"{table_id}: no collapsed version ({c_table_id} not found).")
 
+def clear_bronze_table():
+    """Wipe bronze.acs_estimates. Call once before a multi-year backfill loop,
+    not per-year — bronze should reflect all ingested years, not just the last one."""
+    catalog = get_catalog()
+    iceberg_table = get_or_create_bronze_table(catalog)
+    iceberg_table.delete()
+    log.info("Cleared existing bronze.acs_estimates data.")
+
 def run_acs_bronze_ingestion(api_key: str, year: int, config_path: str) -> dict:
-    """Run bronze ingestion for every table in config_path. Returns a summary dict."""
+    """Run bronze ingestion for every table in config_path, for one year.
+    Does NOT clear prior data — call clear_bronze_table() once beforehand
+    if you want a full fresh backfill."""
     tables = load_table_config(config_path)
     log.info(f"Loaded {len(tables)} tables from {config_path}")
 
     catalog = get_catalog()
     iceberg_table = get_or_create_bronze_table(catalog)
-
-    # Bronze is a faithful mirror of the current API state, not an
-    # accumulating log - clear prior data before reingesting so re-running
-    # this (e.g. via Dagster) is idempotent instead of appending duplicate
-    # copies on top of old runs.
-    iceberg_table.delete()
-    log.info("Cleared existing bronze.acs_estimates data before reingesting.")
 
     tables_processed = 0
     failed_table_ids = []

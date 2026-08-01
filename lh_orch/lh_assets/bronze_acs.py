@@ -14,7 +14,7 @@ for path in (str(PIPELINES_DIR), str(ACS_DIR)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from acs_bronze_ingest import run_acs_bronze_ingestion  # noqa: E402
+from acs_bronze_ingest import run_acs_bronze_ingestion, clear_bronze_table  # noqa: E402
 
 TABLE_CONFIG_PATH = str(ACS_DIR / "table_config.csv")
 
@@ -30,25 +30,33 @@ def bronze_acs_estimates(context: dg.AssetExecutionContext):
     if not api_key:
         raise RuntimeError("CENSUS_API_KEY is not set in the Dagster environment.")
 
-    year = int(os.environ.get("ACS_YEAR", "2023"))
+    years = [2020, 2021, 2022, 2023, 2024]
 
-    summary = run_acs_bronze_ingestion(
-        api_key=api_key,
-        year=year,
-        config_path=TABLE_CONFIG_PATH,
-    )
+    clear_bronze_table()
 
-    context.log.info(
-        f"ACS bronze ingestion complete: "
-        f"{summary['tables_processed']}/{summary['tables_configured']} tables processed, "
-        f"{summary['tables_failed']} failed."
-    )
+    all_summaries = {}
+    for year in years:
+        context.log.info(f"Starting ACS bronze ingestion for year {year}")
+        summary = run_acs_bronze_ingestion(
+            api_key=api_key,
+            year=year,
+            config_path=TABLE_CONFIG_PATH,
+        )
+        all_summaries[year] = summary
+        context.log.info(
+            f"Year {year}: {summary['tables_processed']}/{summary['tables_configured']} tables processed, "
+            f"{summary['tables_failed']} failed."
+        )
+
+    total_processed = sum(s["tables_processed"] for s in all_summaries.values())
+    total_configured = sum(s["tables_configured"] for s in all_summaries.values())
+    total_failed = sum(s["tables_failed"] for s in all_summaries.values())
 
     return dg.MaterializeResult(
         metadata={
-            "tables_configured": dg.MetadataValue.int(summary["tables_configured"]),
-            "tables_processed": dg.MetadataValue.int(summary["tables_processed"]),
-            "tables_failed": dg.MetadataValue.int(summary["tables_failed"]),
-            "failed_table_ids": dg.MetadataValue.text(", ".join(summary["failed_table_ids"]) or "none"),
+            "years_ingested": dg.MetadataValue.text(str(years)),
+            "tables_configured": dg.MetadataValue.int(total_configured),
+            "tables_processed": dg.MetadataValue.int(total_processed),
+            "tables_failed": dg.MetadataValue.int(total_failed),
         }
     )
