@@ -10,6 +10,9 @@ env/
 02_data/02_silver/
 02_data/03_gold/
 
+# Analysis output (regenerable, not source of truth)
+*.csv
+
 # Environment
 .env
 
