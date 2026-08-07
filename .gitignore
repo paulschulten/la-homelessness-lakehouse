@@ -6,7 +6,7 @@ env/
 *.egg-info/
 
 # Data
-02_data/01_raw/
+02_data/01_bronze/
 02_data/02_silver/
 02_data/03_gold/
 
