@@ -6,7 +6,7 @@ import dagster as dg
 import requests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-BRONZE_DIR = PROJECT_ROOT / "02_data" / "01_bronze" / "lahsa" / "02_hic"
+BRONZE_DIR = PROJECT_ROOT / "02_data" / "01_raw" / "lahsa" / "02_hic"
 
 # Confirmed direct-download URLs (item.ashx?...&dl=true pattern — the
 # "documents?id=..." links on LAHSA's HIC page are landing pages, not files).

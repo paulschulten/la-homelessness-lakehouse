@@ -23,7 +23,7 @@ The platform utilizes a medallion data architecture built on DuckDB, Parquet, Py
 
 This project follows a milestone-driven, versioned release approach, with transparent disclaimers about what each version does and does not cover.
 
-- **v0.x (current)** — bronze/silver/gold pipeline validated end-to-end across eight initial domains and fully orchestrated in Dagster. 
+- **v0.0.x (current)** — bronze/silver/gold pipeline validated end-to-end across eight initial domains and fully orchestrated in Dagster. 
 - **v1.0** — initial release of multi-domain gold layer with reliable cross-domain joins at the census tract level enabling tabular ml learning.   
 - **Post-v1.0** — Additional data domains onboarded. Integration of Apache Iceberg and Apache Spark for more robust processing. 
 
