@@ -1,6 +1,6 @@
 [project]
 name = "la-homelessness-lakehouse"
-version = "0.1.0"
+version = "0.0.4"
 description = "dagster imports the definitions python module listed in the tool.dagster
                section and looks for my defs object"
 readme = "README.md"
