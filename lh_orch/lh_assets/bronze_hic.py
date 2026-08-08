@@ -14,7 +14,7 @@ BRONZE_DIR = PROJECT_ROOT / "02_data" / "01_raw" / "lahsa" / "02_hic"
 # add it here once available. 2020 is the earliest year in the project's 2020+ scope.
 HIC_URLS = {
     # 2020: "https://www.lahsa.org/item.ashx?id=4659-2020-housing-inventory-count.xlsx&dl=true",
-    # 2021: "https://www.lahsa.org/item.ashx?id=5506-2021-housing-inventory-count.xlsx&dl=true",
+      2021: "https://www.lahsa.org/item.ashx?id=5506-2021-housing-inventory-count.xlsx&dl=true",
       2022: "https://www.lahsa.org/item.ashx?id=6544-2022-housing-inventory-count.xlsx&dl=true",
       2023: "https://www.lahsa.org/item.ashx?id=7698-2023-housing-inventory-count.xlsx&dl=true",
       2024: "https://www.lahsa.org/item.ashx?id=8162-2024-housing-inventory-count.xlsx&dl=true",

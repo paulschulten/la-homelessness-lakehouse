@@ -40,8 +40,9 @@ def _sanitize(col: str) -> str:
 # Organization Name + Project Name (the only fields that identify a project).
 DIM_PROJECT_COLUMNS = [
     "Organization Name", "Project Name", "Project ID", "Proj. Type", "Address",
-    "City", "State", "SPA", "CD", "SD", "Geo Code", "Zip", "HMIS Participating",
-    "Inventory Type", "Bed Type", "Target Pop.", "Victim Service Provider", "Housing Type",
+    "City", "State", "SPA", "CD", "SD", "Community", "Geo Code", "Zip",
+    "HMIS Participating", "Inventory Type", "Bed Type", "Target Pop.",
+    "Victim Service Provider", "Housing Type",
 ]
 DIM_PROJECT_RENAME = {c: _sanitize(c) for c in DIM_PROJECT_COLUMNS}
 

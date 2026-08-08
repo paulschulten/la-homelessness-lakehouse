@@ -16,17 +16,18 @@ SILVER_PATH = SILVER_DIR / "hic_silver.parquet"
 # years present here get processed; matches the years currently uncommented
 # in bronze_hic.HIC_URLS. Add entries as more years are pulled in.
 YEAR_CONFIG = {
+    2021: {"sheet": "2021 HIC- All Projects"},
     2022: {"sheet": "2022 HIC - All Projects"},
     2023: {"sheet": "2023 HIC - All Projects"},
     2024: {"sheet": "2024 HIC - All Projects"},
     2025: {"sheet": "2025 HIC - All Projects"},
 }
 
-GEO_COLUMNS = ["City", "SPA", "CD", "SD", "Geo Code", "Zip", "Address"]
+GEO_COLUMNS = ["City", "SPA", "CD", "SD", "Geo Code", "Zip", "Address", "Community"]
 
 # Columns that are junk/formatting artifacts in the source Excel, not real
 # LAHSA data — safe to drop, unlike dropping an actual source column.
-# 'Row #' (2023 only) is a spreadsheet row-index artifact, not HIC data.
+# 'Row #' (2022+ years) is a spreadsheet row-index artifact, not HIC data.
 DROP_COLUMNS = ["Unnamed: 78", "Row #"]
 
 # LAHSA is inconsistent with punctuation/formatting on these column names
@@ -36,6 +37,8 @@ DROP_COLUMNS = ["Unnamed: 78", "Row #"]
 COLUMN_RENAME = {
     "CH Beds HH w/ only Children": "CH Beds HH w only Children",
     "HMIS-Participating": "HMIS Participating",
+    "ZIP": "Zip",
+    "McKinney- Vento: YHDP": "McKinney- Vento: Yhdp",
 }
 
 # Some years parse these as real datetime values in Excel, others leave them
