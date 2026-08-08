@@ -40,7 +40,7 @@ def _sanitize(col: str) -> str:
 # Organization Name + Project Name (the only fields that identify a project).
 DIM_PROJECT_COLUMNS = [
     "Organization Name", "Project Name", "Proj. Type", "City", "State",
-    "SPA", "CD", "SD", "Geo Code", "HMIS Participating", "Inventory Type",
+    "SPA", "CD", "SD", "Geo Code", "Zip", "HMIS Participating", "Inventory Type",
     "Bed Type", "Target Pop.", "Victim Service Provider", "Housing Type",
 ]
 DIM_PROJECT_RENAME = {c: _sanitize(c) for c in DIM_PROJECT_COLUMNS}
@@ -77,6 +77,16 @@ def _get_or_create_table(catalog, table_name, schema):
     return catalog.load_table(identifier)
 
 
+def _evolve_schema(table, arrow_schema):
+    """Add any columns present in the incoming data but not yet in the
+    Iceberg table's schema. Source years (e.g. new funding-flag columns
+    LAHSA adds/drops year to year) can introduce columns the table wasn't
+    originally created with — this lets the table grow to accommodate them
+    instead of failing on every new year's additions."""
+    with table.update_schema() as update:
+        update.union_by_name(arrow_schema)
+
+
 def _project_key(org: str, project: str) -> str:
     raw = f"{org}||{project}"
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
@@ -96,8 +106,9 @@ def _load_with_project_key() -> pd.DataFrame:
     group_name="hic",
     description=(
         "Dimension table of LAHSA HIC projects: organization, project name, project "
-        "type, geography (city/spa/cd/sd/geo_code — no tract-level field exists in "
-        "this source), inventory/bed type, target population, and housing type. "
+        "type, geography (city/spa/cd/sd/geo_code/zip — no tract-level field exists "
+        "in this source; zip is only present in 2023 data, null for other years), "
+        "inventory/bed type, target population, and housing type. "
         "Column names are sanitized to snake_case from LAHSA's original headers "
         "(e.g. 'Proj. Type' -> proj_type) since raw punctuation broke Iceberg's "
         "metadata; original headers are documented here for reference. project_key "
@@ -126,6 +137,7 @@ def gold_dim_hic_project(context: dg.AssetExecutionContext):
     catalog = get_catalog()
     _ensure_namespace(catalog)
     table = _get_or_create_table(catalog, "dim_hic_project", DIM_PROJECT_SCHEMA)
+    _evolve_schema(table, DIM_PROJECT_SCHEMA)
 
     arrow_table = pa.Table.from_pandas(dim_df, schema=DIM_PROJECT_SCHEMA, preserve_index=False)
     table.overwrite(arrow_table)
@@ -198,6 +210,7 @@ def gold_fact_hic(context: dg.AssetExecutionContext):
     catalog = get_catalog()
     _ensure_namespace(catalog)
     table = _get_or_create_table(catalog, "fact_hic", schema)
+    _evolve_schema(table, schema)
 
     arrow_table = pa.Table.from_pandas(fact_df, schema=schema, preserve_index=False)
     table.overwrite(arrow_table)

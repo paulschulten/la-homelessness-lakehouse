@@ -16,14 +16,32 @@ SILVER_PATH = SILVER_DIR / "hic_silver.parquet"
 # years present here get processed; matches the years currently uncommented
 # in bronze_hic.HIC_URLS. Add entries as more years are pulled in.
 YEAR_CONFIG = {
+    2023: {"sheet": "2023 HIC - All Projects"},
+    2024: {"sheet": "2024 HIC - All Projects"},
     2025: {"sheet": "2025 HIC - All Projects"},
 }
 
-GEO_COLUMNS = ["City", "SPA", "CD", "SD", "Geo Code"]
+GEO_COLUMNS = ["City", "SPA", "CD", "SD", "Geo Code", "Zip"]
 
 # Columns that are junk/formatting artifacts in the source Excel, not real
 # LAHSA data — safe to drop, unlike dropping an actual source column.
-DROP_COLUMNS = ["Unnamed: 78"]
+# 'Row #' (2023 only) is a spreadsheet row-index artifact, not HIC data.
+DROP_COLUMNS = ["Unnamed: 78", "Row #"]
+
+# LAHSA is inconsistent with punctuation/formatting on these column names
+# across years — same field, different spelling. Normalize to one canonical
+# name per field so years land under the same column instead of splitting.
+# Add more entries here if future years introduce similar drift.
+COLUMN_RENAME = {
+    "CH Beds HH w/ only Children": "CH Beds HH w only Children",
+    "HMIS-Participating": "HMIS Participating",
+}
+
+# Some years parse these as real datetime values in Excel, others leave them
+# as blank/text — normalize to string explicitly before the general object-
+# dtype cast, so concat across years doesn't mix Timestamp objects with
+# strings in the same column (which breaks the parquet writer).
+DATE_COLUMNS = ["Availability Start Date", "Availability End Date"]
 
 
 @dg.asset(
@@ -33,7 +51,10 @@ DROP_COLUMNS = ["Unnamed: 78"]
         "Cleaned LAHSA Housing Inventory Count (HIC) data, project/site-level. "
         "Geography fields (City/SPA/CD/SD/Geo Code) normalized to string; all "
         "other source columns preserved as-is per the project's faithful-"
-        "ingestion approach. No tract-level geography exists in this source."
+        "ingestion approach. No tract-level geography exists in this source. "
+        "One column name is normalized across years to correct LAHSA's own "
+        "inconsistent punctuation (see COLUMN_RENAME in source) — this is a "
+        "spelling fix, not a data change."
     ),
 )
 def silver_hic(context: dg.AssetExecutionContext):
@@ -46,6 +67,14 @@ def silver_hic(context: dg.AssetExecutionContext):
         for col in DROP_COLUMNS:
             if col in df.columns:
                 df = df.drop(columns=[col])
+
+        df = df.rename(columns=COLUMN_RENAME)
+
+        for date_col in DATE_COLUMNS:
+            if date_col in df.columns:
+                df[date_col] = df[date_col].apply(
+                    lambda v: v.isoformat() if isinstance(v, pd.Timestamp) else v
+                )
 
         for geo_col in GEO_COLUMNS:
             if geo_col in df.columns:
