@@ -39,8 +39,8 @@ def _sanitize(col: str) -> str:
 # Source has no unique project ID, so project_key is a surrogate built from
 # Organization Name + Project Name (the only fields that identify a project).
 DIM_PROJECT_COLUMNS = [
-    "Organization Name", "Project Name", "Project ID", "Proj. Type", "Address",
-    "City", "State", "SPA", "CD", "SD", "Community", "Geo Code", "Zip",
+    "Organization Name", "Project Name", "Project ID", "HMIS Proj ID", "Proj. Type",
+    "Address", "City", "State", "SPA", "CD", "SD", "Community", "Geo Code", "Zip",
     "HMIS Participating", "Inventory Type", "Bed Type", "Target Pop.",
     "Victim Service Provider", "Housing Type",
 ]
@@ -107,10 +107,13 @@ def _load_with_project_key() -> pd.DataFrame:
     group_name="hic",
     description=(
         "Dimension table of LAHSA HIC projects: organization, project name, project "
-        "type, geography (city/spa/cd/sd/geo_code/zip/address — no tract-level field "
-        "exists in this source; zip/address are only present in some years, null "
-        "otherwise — 'Project ID' likewise appears only in 2022 data), "
-        "inventory/bed type, target population, and housing type. project_key "
+        "type, geography (city/spa/cd/sd/geo_code/zip/address/community — no "
+        "tract-level field exists in this source; zip/address/community are only "
+        "present in some years, null otherwise). 'Project ID' (2021-2022) and "
+        "'HMIS Proj ID' (2020) are kept as two separate columns rather than merged "
+        "— they may represent the same underlying concept but this hasn't been "
+        "confirmed against LAHSA's documentation, so no assumption of equivalence "
+        "is made. project_key "
         "remains a surrogate hash of Organization Name + Project Name across all "
         "years for consistency, even in years where 'Project ID' is available; "
         "this is a deliberate choice to keep one key logic across the whole "

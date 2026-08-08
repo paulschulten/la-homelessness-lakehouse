@@ -16,6 +16,7 @@ SILVER_PATH = SILVER_DIR / "hic_silver.parquet"
 # years present here get processed; matches the years currently uncommented
 # in bronze_hic.HIC_URLS. Add entries as more years are pulled in.
 YEAR_CONFIG = {
+    2020: {"sheet": "2020 HIC - All Projects"},
     2021: {"sheet": "2021 HIC- All Projects"},
     2022: {"sheet": "2022 HIC - All Projects"},
     2023: {"sheet": "2023 HIC - All Projects"},
