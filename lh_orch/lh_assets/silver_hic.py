@@ -16,12 +16,13 @@ SILVER_PATH = SILVER_DIR / "hic_silver.parquet"
 # years present here get processed; matches the years currently uncommented
 # in bronze_hic.HIC_URLS. Add entries as more years are pulled in.
 YEAR_CONFIG = {
+    2022: {"sheet": "2022 HIC - All Projects"},
     2023: {"sheet": "2023 HIC - All Projects"},
     2024: {"sheet": "2024 HIC - All Projects"},
     2025: {"sheet": "2025 HIC - All Projects"},
 }
 
-GEO_COLUMNS = ["City", "SPA", "CD", "SD", "Geo Code", "Zip"]
+GEO_COLUMNS = ["City", "SPA", "CD", "SD", "Geo Code", "Zip", "Address"]
 
 # Columns that are junk/formatting artifacts in the source Excel, not real
 # LAHSA data — safe to drop, unlike dropping an actual source column.

@@ -39,9 +39,9 @@ def _sanitize(col: str) -> str:
 # Source has no unique project ID, so project_key is a surrogate built from
 # Organization Name + Project Name (the only fields that identify a project).
 DIM_PROJECT_COLUMNS = [
-    "Organization Name", "Project Name", "Proj. Type", "City", "State",
-    "SPA", "CD", "SD", "Geo Code", "Zip", "HMIS Participating", "Inventory Type",
-    "Bed Type", "Target Pop.", "Victim Service Provider", "Housing Type",
+    "Organization Name", "Project Name", "Project ID", "Proj. Type", "Address",
+    "City", "State", "SPA", "CD", "SD", "Geo Code", "Zip", "HMIS Participating",
+    "Inventory Type", "Bed Type", "Target Pop.", "Victim Service Provider", "Housing Type",
 ]
 DIM_PROJECT_RENAME = {c: _sanitize(c) for c in DIM_PROJECT_COLUMNS}
 
@@ -106,9 +106,14 @@ def _load_with_project_key() -> pd.DataFrame:
     group_name="hic",
     description=(
         "Dimension table of LAHSA HIC projects: organization, project name, project "
-        "type, geography (city/spa/cd/sd/geo_code/zip — no tract-level field exists "
-        "in this source; zip is only present in 2023 data, null for other years), "
-        "inventory/bed type, target population, and housing type. "
+        "type, geography (city/spa/cd/sd/geo_code/zip/address — no tract-level field "
+        "exists in this source; zip/address are only present in some years, null "
+        "otherwise — 'Project ID' likewise appears only in 2022 data), "
+        "inventory/bed type, target population, and housing type. project_key "
+        "remains a surrogate hash of Organization Name + Project Name across all "
+        "years for consistency, even in years where 'Project ID' is available; "
+        "this is a deliberate choice to keep one key logic across the whole "
+        "table rather than change grain/join behavior by year. "
         "Column names are sanitized to snake_case from LAHSA's original headers "
         "(e.g. 'Proj. Type' -> proj_type) since raw punctuation broke Iceberg's "
         "metadata; original headers are documented here for reference. project_key "
