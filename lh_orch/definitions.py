@@ -26,6 +26,9 @@ from lh_orch.lh_assets.gold_hic import gold_dim_hic_project, gold_fact_hic
 from lh_orch.lh_assets.bronze_311 import bronze_311_encampment
 from lh_orch.lh_assets.silver_311 import silver_311_encampment
 from lh_orch.lh_assets.gold_311 import gold_fact_311_encampment
+from lh_orch.lh_assets.bronze_homeless_students import bronze_homeless_students
+from lh_orch.lh_assets.silver_homeless_students import silver_homeless_students
+from lh_orch.lh_assets.gold_homeless_students import gold_fact_homeless_students
 
 bronze_silver_daily_schedule = dg.ScheduleDefinition(
     job=lacity_ingestion_job,
@@ -42,6 +45,7 @@ defs = dg.Definitions(
         bronze_tiger_tracts,
         bronze_hic,
         bronze_311_encampment,
+        bronze_homeless_students,
         gold_fact_expenses,
         gold_dim_department,
         gold_dim_fund,
@@ -56,6 +60,7 @@ defs = dg.Definitions(
         gold_dim_hic_project,
         gold_fact_hic,
         gold_fact_311_encampment,
+        gold_fact_homeless_students,
         silver_count,
         silver_expenses,
         silver_acs_estimates,
@@ -63,6 +68,7 @@ defs = dg.Definitions(
         silver_tiger_tracts,
         silver_hic,
         silver_311_encampment,
+        silver_homeless_students,
     ],
     jobs=[lacity_ingestion_job],
     schedules=[bronze_silver_daily_schedule],
