@@ -51,7 +51,7 @@ PERCENT_COLUMNS = [
 TEXT_COLUMNS = [
     "Academic Year", "Aggregate Level", "County Code", "District Code",
     "School Code", "County Name", "District Name", "School Name",
-    "Charter School", "DASS", "Reporting Category",
+    "Charter School", "DASS", "Reporting Category", "Entity Type",
 ]
 
 ALL_RENAME = {c: _sanitize(c) for c in TEXT_COLUMNS + COUNT_COLUMNS + PERCENT_COLUMNS}
@@ -96,6 +96,15 @@ def _evolve_schema(table, arrow_schema):
         "hotels_motels_percent) to satisfy Iceberg's field-name "
         "requirements. Suppressed cells (source privacy threshold, groups "
         "<= 10 students) are real null, not the source's literal '*'. "
+        "entity_type (district-grain rows only) marks 'county_office' (LA "
+        "County Office of Education — not a real district, overlaps with "
+        "real districts' enrollment) and 'sbe_charter_school' (individual "
+        "State Board of Education charter schools appearing at district "
+        "grain) — filter these out for a clean geographic-district "
+        "ranking/comparison; 'school_district' marks genuine districts. "
+        "district_name also has one known CDE rename normalized upstream "
+        "in silver ('Whittier City Elementary' -> 'Whittier City') so that "
+        "district's multi-year trajectory doesn't fragment. "
         "Landed in gold.fact_homeless_students."
     ),
 )

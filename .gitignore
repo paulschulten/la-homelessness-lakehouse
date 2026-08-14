@@ -28,3 +28,6 @@ Thumbs.db
 02_data/01_iceberg/
 client.duckdb
 client.duckdb.wal
+
+# API runtime logs
+api/query_audit.log
