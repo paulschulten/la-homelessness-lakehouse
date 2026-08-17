@@ -1,16 +1,19 @@
 # api/main.py
 
 import logging
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
 
+import anthropic
 import duckdb
 import numpy as np
 import sqlglot
 from sqlglot import exp
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +25,22 @@ if str(PIPELINES_DIR) not in sys.path:
 from iceberg_catalog import get_catalog  # noqa: E402
 
 app = FastAPI(title="LA Homelessness Lakehouse API")
+
+# --- CORS ------------------------------------------------------------------
+# Browsers block a page on one origin (http://localhost:3000, the Next.js
+# dev server) from reading responses from a different origin
+# (http://localhost:8000, this API) unless the server explicitly allows it.
+# Without this, requests still reach FastAPI and execute (visible as 200 in
+# the server log) but the browser discards the response before your page's
+# JavaScript ever sees it — showing as "Failed to fetch" client-side. This
+# allowlist is deliberately narrow (only the known local dev origin); widen
+# it to the real deployed frontend URL once this API is actually deployed.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 ICEBERG_NAMESPACE = "gold"
 
@@ -37,18 +56,309 @@ _audit_handler = logging.FileHandler(PROJECT_ROOT / "api" / "query_audit.log")
 _audit_handler.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
 _audit_logger.addHandler(_audit_handler)
 
-# Small allowlist of queryable tables, rather than accepting any string —
-# a first, minimal safety boundary. Expand as more gold tables are ready
-# to expose.
-ALLOWED_TABLES = {
-    "fact_pit_count",
-    "fact_hic",
-    "dim_hic_project",
-    "fact_311_encampment",
-    "fact_homeless_students",
-    "fact_acs_estimates",
-    "dim_tract",
+# Every queryable gold table, expanded to include the dim tables and the
+# expenses data source that were missing before — plus which data source
+# each one belongs to and a human-written description, since DuckDB's
+# DESCRIBE only knows types, not meaning. ACS is the one exception: it has
+# 1,924 variables, far too many to hand-describe here — dim_variable IS its
+# data dictionary (variable code -> label), queryable directly instead.
+TABLE_METADATA = {
+    "ACS (Census demographics)": {
+        "description": "Census Bureau 5-year American Community Survey estimates at the tract level, 2020-2024. 1,924 variables — too many to describe individually here; query dim_variable for the code-to-label lookup covering every variable.",
+        "tables": {
+            "fact_acs_estimates": {
+                "description": "One row per tract, year, and variable code, with the estimate value.",
+                "columns": {},
+            },
+            "dim_variable": {
+                "description": "Lookup table: ACS variable code -> plain-language label. Use this to find which variable code you need before querying fact_acs_estimates.",
+                "columns": {},
+            },
+            "dim_tract": {
+                "description": "Census tract dimension — tract_fips and related geographic identifiers.",
+                "columns": {},
+            },
+        },
+    },
+    "PIT Count (LAHSA)": {
+        "description": "LAHSA's annual Point-in-Time count of people experiencing homelessness, by tract, 2020-2026 (2021 not conducted). Sheltered/unsheltered breakdowns by household and age type.",
+        "tables": {
+            "fact_pit_count": {
+                "description": "One row per tract per year, with sheltered/unsheltered/street/vehicle counts broken out by household type. totpeople and totunsheltpeople are null for 2023+ (LAHSA stopped publishing these pre-computed totals that year, not a data error).",
+                "columns": {
+                    "tract_fips": "Census tract FIPS code",
+                    "year": "PIT count year",
+                    "totsheltpeople": "Total sheltered people (ES+TH+SH)",
+                    "totunsheltpeople": "Total unsheltered people (null for 2023+)",
+                    "totpeople": "Total PIT count, sheltered + unsheltered (null for 2023+)",
+                    "totencamp": "Count of encampments",
+                },
+            },
+            "dim_geography": {
+                "description": "Tract-level geography dimension for PIT — city, SPA, council/legislative districts.",
+                "columns": {},
+            },
+        },
+    },
+    "HIC (Housing Inventory Count)": {
+        "description": "LAHSA's annual project-level shelter and housing bed/unit inventory, 2020-2025. Geography is SPA/CD/SD, not tract — this source has no tract-level field.",
+        "tables": {
+            "fact_hic": {
+                "description": "One row per project per year: bed counts by household type, PIT count for that project, utilization rate, and funding-source flags.",
+                "columns": {
+                    "project_key": "Surrogate key (hash of org + project name) — see dim_hic_project note on confidential-provider collisions",
+                    "year": "HIC year",
+                    "total_beds": "Total beds at this project",
+                    "pit_count": "Point-in-time count of people in this project on count night",
+                    "utilization_rate": "Percentage of total beds in use on count night",
+                },
+            },
+            "dim_hic_project": {
+                "description": "Project dimension: organization, project type, geography, bed/inventory type. NOTE: LAHSA redacts org/project names to 'CONFIDENTIAL' for victim-service (DV) providers, so ~19 such projects share one project_key.",
+                "columns": {},
+            },
+        },
+    },
+    "311 Encampment Requests": {
+        "description": "LA City MyLA311 homeless encampment service requests, 2020-2024 (2025 excluded — source dataset stale as published). Includes lat/long, address, council district.",
+        "tables": {
+            "fact_311_encampment": {
+                "description": "One row per 311 request.",
+                "columns": {
+                    "srnumber": "LA's own unique service-request ID",
+                    "createddate": "When the request was filed",
+                    "status": "Request status (Open/Closed)",
+                    "cd": "Council district",
+                },
+            },
+        },
+    },
+    "Homeless Student Enrollment (CDE)": {
+        "description": "California Dept of Education data on homeless student enrollment by dwelling type, LA County, 2019-20 through 2024-25.",
+        "tables": {
+            "fact_homeless_students": {
+                "description": "One row per county/district/school x charter_school x dass x reporting_category combination. IMPORTANT: rows overlap by design (school totals roll up into district totals). For a true unduplicated total, filter to aggregate_level='C', charter_school='All', dass='All', reporting_category='TA'.",
+                "columns": {
+                    "academic_year": "School year, e.g. 2023-24",
+                    "aggregate_level": "C=county, D=district, S=school",
+                    "district_name": "District name",
+                    "homeless_student_enrollment": "Count of homeless students",
+                    "temporarily_doubled_up": "Students in doubled-up housing (largest, most undercounted category)",
+                    "entity_type": "school_district / county_office / sbe_charter_school — filter out non-districts for a clean district ranking",
+                },
+            },
+        },
+    },
+    "City Expenses": {
+        "description": "LA City homelessness-related expenditures, from the LA Controller's office.",
+        "tables": {
+            "fact_homelessness_expenses": {"description": "One row per expense transaction.", "columns": {}},
+            "dim_department": {"description": "City department dimension.", "columns": {}},
+            "dim_fund": {"description": "Funding source dimension.", "columns": {}},
+            "dim_vendor": {"description": "Vendor dimension.", "columns": {}},
+            "dim_project": {"description": "Project dimension.", "columns": {}},
+        },
+    },
 }
+
+# Flat set of every queryable table name, derived from the structure above
+# so there's one source of truth rather than a separately-maintained list.
+ALLOWED_TABLES = {
+    table_name
+    for source in TABLE_METADATA.values()
+    for table_name in source["tables"]
+}
+
+
+# --- Natural-language to SQL ------------------------------------------------
+# Reuses TABLE_METADATA (the same source that powers /schema) as the schema
+# context an LLM needs to write accurate SQL — no separate metadata to
+# maintain. The prompt asks Claude to classify the question first (data vs.
+# platform/meta vs. unrelated) and respond accordingly, so one call handles
+# routing and generation together rather than two separate steps.
+
+_anthropic_client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+
+PLATFORM_CONTEXT = """
+Open Civic AI is an open-source data platform for researching the LA
+homelessness crisis. It integrates 6 public data sources (ACS Census
+demographics, LAHSA PIT Count, LAHSA Housing Inventory Count, LA City 311
+encampment requests, CDE homeless student enrollment, and LA City expenses)
+into a medallion-architecture data lakehouse (bronze/silver/gold layers)
+built on Apache Iceberg and stored in AWS S3, cataloged via AWS Glue. The
+backend is a FastAPI service that queries the data through DuckDB. Data is
+ingested and orchestrated with Dagster. The frontend is built with Next.js.
+""".strip()
+
+
+def _build_schema_context() -> str:
+    lines = []
+    for source_name, source_meta in TABLE_METADATA.items():
+        lines.append(f"## {source_name}")
+        lines.append(source_meta["description"])
+        for table_name, table_meta in source_meta["tables"].items():
+            lines.append(f"### Table: {table_name}")
+            lines.append(table_meta["description"])
+            if table_meta["columns"]:
+                for col, desc in table_meta["columns"].items():
+                    lines.append(f"- {col}: {desc}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+_SCHEMA_CONTEXT = _build_schema_context()
+
+GENERATE_SQL_SYSTEM_PROMPT = f"""You write DuckDB SQL for a homelessness data platform, using only the schema below. Table names are plain (no schema prefix) — e.g. SELECT * FROM fact_hic.
+
+{_SCHEMA_CONTEXT}
+
+Rules:
+- If the question can be answered with a SQL query against this schema, respond with ONLY the SQL query, nothing else — no explanation, no markdown code fences.
+- If the question is about the platform itself (architecture, tech stack, data sources) rather than the data, respond with exactly: NOT_A_DATA_QUESTION
+- If the question is unrelated to this platform or its data entirely, respond with exactly: NOT_A_DATA_QUESTION
+- Only write SELECT statements. Never write INSERT, UPDATE, DELETE, DROP, or any other statement type.
+"""
+
+
+class NLQuestionRequest(BaseModel):
+    question: str
+
+
+@app.post("/generate-sql")
+def generate_sql(request: NLQuestionRequest):
+    try:
+        response = _anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=GENERATE_SQL_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": request.question}],
+        )
+        result = response.content[0].text.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate SQL: {e}")
+
+    if result == "NOT_A_DATA_QUESTION":
+        return {
+            "sql": None,
+            "message": "This looks like a question about the platform itself, or something outside this data — try \"Get answer\" instead.",
+        }
+
+    return {"sql": result, "message": None}
+
+
+# --- "Get answer" — one question box, three possible outcomes --------------
+# Unlike /generate-sql (which is deliberately data-question-only, feeding
+# the SQL editor), this endpoint is the universal fallback: it classifies
+# the question into one of three paths and always returns a plain-English
+# answer, never raw SQL for the user to run themselves.
+#
+#   DATA:<sql>      -> run the query server-side, then a second Claude call
+#                       summarizes the actual result into a sentence
+#   PLATFORM:<text> -> answered directly from PLATFORM_CONTEXT, no query run
+#   DECLINE:<text>  -> politely explains the question is out of scope
+#
+# Classification and (for data questions) SQL generation happen in one
+# call; only data questions need the second summarization call, so
+# platform/decline questions stay cheap — a single Haiku call.
+
+ANSWER_SYSTEM_PROMPT = f"""You answer questions about a homelessness data platform. You have two kinds of knowledge: the data schema below, and facts about the platform itself.
+
+DATA SCHEMA:
+{_SCHEMA_CONTEXT}
+
+PLATFORM FACTS:
+{PLATFORM_CONTEXT}
+
+Classify the user's question and respond in exactly one of these three formats, with no other text:
+
+1. If it's a question the DATA SCHEMA can answer, respond with:
+DATA:<a single valid DuckDB SELECT query, table names plain with no schema prefix>
+
+2. If it's a question about the platform itself (architecture, tech stack, how it works) that the PLATFORM FACTS can answer, respond with:
+PLATFORM:<a short, direct plain-English answer using only the facts given above>
+
+3. If the question is unrelated to this platform or its data, respond with:
+DECLINE:<a brief, polite sentence explaining you can only answer questions about this homelessness data platform>
+
+Only ever write SELECT statements in the DATA case. Never write INSERT, UPDATE, DELETE, DROP, or any other statement type.
+"""
+
+SUMMARIZE_SYSTEM_PROMPT = """You are given a user's question and the results of a SQL query that answered it. Write a short, direct plain-English answer to the question using only this data. Do not mention SQL, tables, or columns — just answer naturally, like a knowledgeable person would. If the results are empty, say so plainly."""
+
+
+class AnswerResponse(BaseModel):
+    answer: str
+    sql: str | None = None
+    rows: list | None = None
+
+
+@app.post("/answer", response_model=AnswerResponse)
+def answer_question(request: NLQuestionRequest):
+    try:
+        classify_response = _anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=ANSWER_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": request.question}],
+        )
+        classified = classify_response.content[0].text.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not classify question: {e}")
+
+    if classified.startswith("PLATFORM:"):
+        return AnswerResponse(answer=classified[len("PLATFORM:"):].strip())
+
+    if classified.startswith("DECLINE:"):
+        return AnswerResponse(answer=classified[len("DECLINE:"):].strip())
+
+    if classified.startswith("DATA:"):
+        generated_sql = classified[len("DATA:"):].strip()
+
+        try:
+            cleaned_sql = _validate_select_only(generated_sql)
+        except HTTPException as e:
+            # The model wrote something that failed our own safety checks —
+            # fail honestly rather than silently degrading.
+            raise HTTPException(
+                status_code=500,
+                detail=f"Generated query failed validation: {e.detail}",
+            )
+
+        cur = _shared_con.cursor()
+        try:
+            df = _execute_capped(cur, cleaned_sql, max_rows=20)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Query execution failed: {e}")
+        finally:
+            cur.close()
+
+        if df is None or len(df) == 0:
+            rows = []
+        else:
+            df = df.replace({np.nan: None})
+            rows = df.to_dict(orient="records")
+
+        try:
+            summary_response = _anthropic_client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                system=SUMMARIZE_SYSTEM_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": f"Question: {request.question}\n\nQuery results: {rows}",
+                }],
+            )
+            answer_text = summary_response.content[0].text.strip()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not summarize results: {e}")
+
+        return AnswerResponse(answer=answer_text, sql=cleaned_sql, rows=rows)
+
+    # Model didn't follow the format — fail honestly rather than guess.
+    raise HTTPException(
+        status_code=500,
+        detail=f"Could not classify the question (unexpected response format).",
+    )
 
 
 @app.get("/")
@@ -83,6 +393,46 @@ def get_table(table_name: str, limit: int = 5):
         "row_count": len(df),
         "rows": df.to_dict(orient="records"),
     }
+
+
+@app.get("/schema")
+def get_schema():
+    """Returns every queryable table, grouped by data source, with authored
+    descriptions plus live column name/type read off the actual views set
+    up at startup — so column names/types always reflect the real current
+    schema even though the descriptions themselves are hand-maintained."""
+    cur = _shared_con.cursor()
+    try:
+        groups = []
+        for source_name, source_meta in TABLE_METADATA.items():
+            tables = []
+            for table_name, table_meta in source_meta["tables"].items():
+                result = cur.sql(f"DESCRIBE {table_name}").to_df()
+                columns = [
+                    {
+                        "column": row["column_name"],
+                        "type": row["column_type"],
+                        "description": table_meta["columns"].get(row["column_name"], ""),
+                    }
+                    for _, row in result.iterrows()
+                ]
+                tables.append(
+                    {
+                        "name": table_name,
+                        "description": table_meta["description"],
+                        "columns": columns,
+                    }
+                )
+            groups.append(
+                {
+                    "source": source_name,
+                    "description": source_meta["description"],
+                    "tables": tables,
+                }
+            )
+    finally:
+        cur.close()
+    return {"groups": groups}
 
 
 # --- Raw SQL query endpoint ---------------------------------------------
