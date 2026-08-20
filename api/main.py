@@ -26,6 +26,22 @@ from iceberg_catalog import get_catalog  # noqa: E402
 
 app = FastAPI(title="LA Homelessness Lakehouse API")
 
+
+def _strip_markdown_fence(text: str) -> str:
+    """LLMs sometimes wrap SQL in a markdown code fence (```sql ... ```)
+    even when explicitly told not to — a well-known, common failure mode
+    that's more reliable to fix in code than to rely on prompt compliance
+    alone. Strips a leading ```sql or ``` and a trailing ``` if present."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+        if cleaned.lower().startswith("sql"):
+            cleaned = cleaned[3:]
+        cleaned = cleaned.lstrip("\n")
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    return cleaned.strip()
+
 # --- CORS ------------------------------------------------------------------
 # Browsers block a page on one origin (http://localhost:3000, the Next.js
 # dev server) from reading responses from a different origin
@@ -192,30 +208,59 @@ ingested and orchestrated with Dagster. The frontend is built with Next.js.
 
 
 def _build_schema_context() -> str:
+    """Builds the schema context an LLM needs, using the SAME authoritative
+    source /schema uses — a live DESCRIBE against each table's actual view —
+    merged with whatever manual descriptions exist in TABLE_METADATA. This
+    guarantees the LLM always sees the real, full column list (previously,
+    this function only used the small hand-written columns dict, which was
+    incomplete — e.g. only 6 of fact_homeless_students' 24 real columns had
+    descriptions, causing the model to undercount/misreport fields when
+    asked directly)."""
+    cur = _shared_con.cursor()
     lines = []
-    for source_name, source_meta in TABLE_METADATA.items():
-        lines.append(f"## {source_name}")
-        lines.append(source_meta["description"])
-        for table_name, table_meta in source_meta["tables"].items():
-            lines.append(f"### Table: {table_name}")
-            lines.append(table_meta["description"])
-            if table_meta["columns"]:
-                for col, desc in table_meta["columns"].items():
-                    lines.append(f"- {col}: {desc}")
-        lines.append("")
+    try:
+        for source_name, source_meta in TABLE_METADATA.items():
+            lines.append(f"## {source_name}")
+            lines.append(source_meta["description"])
+            for table_name, table_meta in source_meta["tables"].items():
+                lines.append(f"### Table: {table_name}")
+                lines.append(table_meta["description"])
+                result = cur.sql(f"DESCRIBE {table_name}").to_df()
+                for _, row in result.iterrows():
+                    col = row["column_name"]
+                    col_type = row["column_type"]
+                    desc = table_meta["columns"].get(col, "")
+                    if desc:
+                        lines.append(f"- {col} ({col_type}): {desc}")
+                    else:
+                        lines.append(f"- {col} ({col_type})")
+            lines.append("")
+    finally:
+        cur.close()
     return "\n".join(lines)
 
 
-_SCHEMA_CONTEXT = _build_schema_context()
+# Built lazily at startup (after _shared_con exists), not at module import
+# time — see _on_startup(). Declared here as a placeholder; _on_startup()
+# overwrites it with the real, live schema once the database connection
+# is ready.
+_SCHEMA_CONTEXT = "(schema context not yet loaded)"
 
-GENERATE_SQL_SYSTEM_PROMPT = f"""You write DuckDB SQL for a homelessness data platform, using only the schema below. Table names are plain (no schema prefix) — e.g. SELECT * FROM fact_hic.
+
+def _generate_sql_system_prompt() -> str:
+    # A function, not a frozen f-string constant, so it always reflects the
+    # current value of _SCHEMA_CONTEXT — critical since that value is
+    # rebuilt at startup, after this module's top-level code has already run.
+    return f"""You write DuckDB SQL for a homelessness data platform, using only the schema below. Table names are plain (no schema prefix) — e.g. SELECT * FROM fact_hic.
 
 {_SCHEMA_CONTEXT}
 
 Rules:
-- If the question can be answered with a SQL query against this schema, respond with ONLY the SQL query, nothing else — no explanation, no markdown code fences.
+- Only write SQL for questions that require actually querying/aggregating the data itself (counts, sums, filters, rankings). Never query information_schema or any system/metadata table.
+- If the question is about what tables/columns exist or what they mean (e.g. "what columns are in fact_hic", "what does totpeople mean") — that's already answered by the schema above, not something to query. Respond with exactly: NOT_A_DATA_QUESTION
 - If the question is about the platform itself (architecture, tech stack, data sources) rather than the data, respond with exactly: NOT_A_DATA_QUESTION
 - If the question is unrelated to this platform or its data entirely, respond with exactly: NOT_A_DATA_QUESTION
+- If the question can be answered with a SQL query against this schema, respond with ONLY the SQL query, nothing else — no explanation, no markdown code fences.
 - Only write SELECT statements. Never write INSERT, UPDATE, DELETE, DROP, or any other statement type.
 """
 
@@ -230,7 +275,7 @@ def generate_sql(request: NLQuestionRequest):
         response = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
-            system=GENERATE_SQL_SYSTEM_PROMPT,
+            system=_generate_sql_system_prompt(),
             messages=[{"role": "user", "content": request.question}],
         )
         result = response.content[0].text.strip()
@@ -240,10 +285,9 @@ def generate_sql(request: NLQuestionRequest):
     if result == "NOT_A_DATA_QUESTION":
         return {
             "sql": None,
-            "message": "This looks like a question about the platform itself, or something outside this data — try \"Get answer\" instead.",
+            "message": "This looks like a question about the platform itself, or something outside this data — please try \"Ask About the Platform\" instead.",
         }
-
-    return {"sql": result, "message": None}
+    return {"sql": _strip_markdown_fence(result), "message": None}
 
 
 # --- "Get answer" — one question box, three possible outcomes --------------
@@ -261,7 +305,11 @@ def generate_sql(request: NLQuestionRequest):
 # call; only data questions need the second summarization call, so
 # platform/decline questions stay cheap — a single Haiku call.
 
-ANSWER_SYSTEM_PROMPT = f"""You answer questions about a homelessness data platform. You have two kinds of knowledge: the data schema below, and facts about the platform itself.
+def _answer_system_prompt() -> str:
+    # A function, not a frozen f-string constant, for the same reason as
+    # _generate_sql_system_prompt() above — must reflect the current,
+    # startup-rebuilt value of _SCHEMA_CONTEXT.
+    return f"""You answer questions about a homelessness data platform. You have two kinds of knowledge: the data schema below, and facts about the platform itself.
 
 DATA SCHEMA:
 {_SCHEMA_CONTEXT}
@@ -274,16 +322,18 @@ Classify the user's question and respond in exactly one of these three formats, 
 1. If it's a question the DATA SCHEMA can answer, respond with:
 DATA:<a single valid DuckDB SELECT query, table names plain with no schema prefix>
 
-2. If it's a question about the platform itself (architecture, tech stack, how it works) that the PLATFORM FACTS can answer, respond with:
+2. If it's a question about the platform itself (architecture, tech stack, how it works), OR a question about what tables/columns exist and what they mean (schema/data-dictionary questions — e.g. "what columns are in fact_hic", "what does totpeople mean", "what tables are available", "how many fields does X have"), answer using the DATA SCHEMA and PLATFORM FACTS given above. When asked to list or count columns/fields, use the exact column list given for that table in the DATA SCHEMA above — do not omit any:
 PLATFORM:<a short, direct plain-English answer using only the facts given above>
 
 3. If the question is unrelated to this platform or its data, respond with:
 DECLINE:<a brief, polite sentence explaining you can only answer questions about this homelessness data platform>
 
-Only ever write SELECT statements in the DATA case. Never write INSERT, UPDATE, DELETE, DROP, or any other statement type.
+Only ever write SELECT statements in the DATA case, and only for questions that require actually querying/aggregating the data itself (counts, sums, filters, rankings) — never to look up table or column structure, which is already given to you above in the DATA SCHEMA section. Never write INSERT, UPDATE, DELETE, DROP, or any other statement type, and never query information_schema or any system/metadata table.
+
+Writing style for PLATFORM and DECLINE answers: write in clear, natural, professional English, the way a knowledgeable analyst would explain something to a colleague. Avoid awkward phrasing like "the platform use" — proofread the sentence in your head before answering. Keep it concise; a sentence or two is usually enough.
 """
 
-SUMMARIZE_SYSTEM_PROMPT = """You are given a user's question and the results of a SQL query that answered it. Write a short, direct plain-English answer to the question using only this data. Do not mention SQL, tables, or columns — just answer naturally, like a knowledgeable person would. If the results are empty, say so plainly."""
+SUMMARIZE_SYSTEM_PROMPT = """You are given a user's question and the results of a SQL query that answered it. Write a short, direct plain-English answer to the question using only this data. Do not mention SQL, tables, or columns — just answer naturally, like a knowledgeable person would. If the results are empty, say so plainly. Write in clear, natural, professional English — proofread the sentence in your head before answering."""
 
 
 class AnswerResponse(BaseModel):
@@ -298,7 +348,7 @@ def answer_question(request: NLQuestionRequest):
         classify_response = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
-            system=ANSWER_SYSTEM_PROMPT,
+            system=_answer_system_prompt(),
             messages=[{"role": "user", "content": request.question}],
         )
         classified = classify_response.content[0].text.strip()
@@ -312,7 +362,7 @@ def answer_question(request: NLQuestionRequest):
         return AnswerResponse(answer=classified[len("DECLINE:"):].strip())
 
     if classified.startswith("DATA:"):
-        generated_sql = classified[len("DATA:"):].strip()
+        generated_sql = _strip_markdown_fence(classified[len("DATA:"):].strip())
 
         try:
             cleaned_sql = _validate_select_only(generated_sql)
@@ -565,7 +615,12 @@ def _init_shared_connection():
 
 @app.on_event("startup")
 def _on_startup():
+    global _SCHEMA_CONTEXT
     _init_shared_connection()
+    # Now that _shared_con exists, rebuild the schema context from the real,
+    # live table structure — this is what fixes the earlier bug where the
+    # LLM only saw a small, hand-written subset of each table's columns.
+    _SCHEMA_CONTEXT = _build_schema_context()
 
 
 def _execute_capped(cur, cleaned_sql: str, max_rows: int):
