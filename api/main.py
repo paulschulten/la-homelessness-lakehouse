@@ -12,8 +12,12 @@ import duckdb
 import numpy as np
 import sqlglot
 from sqlglot import exp
+
+import io
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -333,8 +337,7 @@ Only ever write SELECT statements in the DATA case, and only for questions that 
 Writing style for PLATFORM and DECLINE answers: write in clear, natural, professional English, the way a knowledgeable analyst would explain something to a colleague. Avoid awkward phrasing like "the platform use" — proofread the sentence in your head before answering. Keep it concise; a sentence or two is usually enough.
 """
 
-SUMMARIZE_SYSTEM_PROMPT = """You are given a user's question and the results of a SQL query that answered it. Write a short, direct plain-English answer to the question using only this data. Do not mention SQL, tables, or columns — just answer naturally, like a knowledgeable person would. If the results are empty, say so plainly. Write in clear, natural, professional English — proofread the sentence in your head before answering."""
-
+SUMMARIZE_SYSTEM_PROMPT = """You are given a user's question and the results of a SQL query that answered it. Write a short, direct plain-English answer to the question using only this data. Do not mention SQL, tables, or columns — just answer naturally, like a knowledgeable person would. If the results are empty, say so plainly."""
 
 class AnswerResponse(BaseModel):
     answer: str
@@ -424,8 +427,8 @@ def get_table(table_name: str, limit: int = 5):
             detail=f"Table '{table_name}' is not available. Allowed: {sorted(ALLOWED_TABLES)}",
         )
 
-    if limit > 1000:
-        limit = 1000  # basic guardrail — real pagination comes later
+    if limit > 20000:
+        limit = 20000  # basic guardrail — real pagination comes later
 
     catalog = get_catalog()
     identifier = f"{ICEBERG_NAMESPACE}.{table_name}"
@@ -628,7 +631,6 @@ def _execute_capped(cur, cleaned_sql: str, max_rows: int):
     result = cur.sql(wrapped)
     return result.to_df() if result is not None else None
 
-
 @app.post("/query")
 def run_query(request: QueryRequest):
     start = time.monotonic()
@@ -665,9 +667,19 @@ def run_query(request: QueryRequest):
         row_count = len(df)
         status = "success"
 
+        total_count = None
+        if row_count == MAX_ROWS:
+            count_cur = _shared_con.cursor()
+            try:
+                count_result = count_cur.sql(f"SELECT COUNT(*) AS n FROM ({cleaned_sql}) AS user_query")
+                total_count = int(count_result.to_df()["n"].iloc[0])
+            finally:
+                count_cur.close()
+
         return {
             "row_count": row_count,
             "truncated": row_count == MAX_ROWS,
+            "total_count": total_count,
             "rows": df.to_dict(orient="records"),
         }
 
@@ -679,3 +691,29 @@ def run_query(request: QueryRequest):
         _audit_logger.info(
             f"status={status} duration_ms={duration_ms} row_count={row_count} sql={request.sql!r}"
         )
+
+@app.post("/query/export")
+def export_query(request: QueryRequest):
+    cleaned_sql = _validate_select_only(request.sql)
+
+    cur = _shared_con.cursor()
+    try:
+        result = cur.sql(cleaned_sql)
+        df = result.to_df() if result is not None else None
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Query failed: {e}")
+    finally:
+        cur.close()
+
+    if df is None or len(df) == 0:
+        raise HTTPException(status_code=404, detail="Query returned no rows.")
+
+    buffer = io.StringIO()
+    df.to_csv(buffer, index=False)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=query_export.csv"},
+    )
