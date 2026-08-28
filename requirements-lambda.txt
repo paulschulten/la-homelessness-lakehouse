@@ -1,0 +1,11 @@
+fastapi
+mangum
+pydantic
+pyiceberg
+sqlalchemy
+sqlglot
+anthropic
+duckdb
+numpy
+sqlalchemy
+pandas

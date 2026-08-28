@@ -15,6 +15,8 @@ from sqlglot import exp
 
 import io
 
+from mangum import Mangum
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -29,6 +31,7 @@ if str(PIPELINES_DIR) not in sys.path:
 from iceberg_catalog import get_catalog  # noqa: E402
 
 app = FastAPI(title="LA Homelessness Lakehouse API")
+handler = Mangum(app)
 
 
 def _strip_markdown_fence(text: str) -> str:
@@ -72,7 +75,7 @@ ICEBERG_NAMESPACE = "gold"
 # and eventually billing/tiering once auth exists.
 _audit_logger = logging.getLogger("query_audit")
 _audit_logger.setLevel(logging.INFO)
-_audit_handler = logging.FileHandler(PROJECT_ROOT / "api" / "query_audit.log")
+_audit_handler = logging.FileHandler("/tmp/query_audit.log")
 _audit_handler.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
 _audit_logger.addHandler(_audit_handler)
 
@@ -599,7 +602,8 @@ def _init_shared_connection():
     global _shared_con
     con = duckdb.connect()
     con.sql("INSTALL iceberg; LOAD iceberg;")
-    con.sql("CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain, CHAIN 'config');")
+    chain = "env" if os.environ.get("LAKEHOUSE_ENV") == "aws" else "config"
+    con.sql(f"CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain, CHAIN '{chain}');")
     con.sql(
         """
         ATTACH IF NOT EXISTS '277607772876' AS glue_catalog (
