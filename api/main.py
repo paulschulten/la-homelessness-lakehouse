@@ -31,7 +31,7 @@ if str(PIPELINES_DIR) not in sys.path:
 from iceberg_catalog import get_catalog  # noqa: E402
 
 app = FastAPI(title="LA Homelessness Lakehouse API")
-handler = Mangum(app)
+handler = Mangum(app, api_gateway_base_path="/prod")
 
 
 def _strip_markdown_fence(text: str) -> str:
@@ -60,7 +60,7 @@ def _strip_markdown_fence(text: str) -> str:
 # it to the real deployed frontend URL once this API is actually deployed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "https://main.d2526iaxcengli.amplifyapp.com"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

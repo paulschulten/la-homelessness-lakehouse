@@ -32,3 +32,5 @@ client.duckdb.wal
 # API runtime logs
 api/query_audit.logpackage/
 lambda_deploy.zip
+package/
+api/query_audit.log
